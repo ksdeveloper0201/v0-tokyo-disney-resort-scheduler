@@ -3,35 +3,20 @@
 import { useState } from 'react'
 import { useScheduleStore } from '@/lib/store'
 import { ParkSelector } from '@/components/park-selector'
-import { ModeSelector } from '@/components/mode-selector'
-import { PrioritySelector } from '@/components/priority-selector'
-import { ItemSelector } from '@/components/item-selector'
-import { TimeScheduleBoard } from '@/components/time-schedule-board'
-import { AutoScheduler } from '@/components/auto-scheduler'
+import { CategoryRanking } from '@/components/category-ranking'
+import { ScheduleBuilder } from '@/components/schedule-builder'
 import { SaveSchedule } from '@/components/save-schedule'
 
 export default function HomePage() {
-  const { schedulingMode, setStep, reset } = useScheduleStore()
+  const { setStep, reset } = useScheduleStore()
   const [currentView, setCurrentView] = useState<string>('park-select')
 
   const handleParkSelect = () => {
-    setCurrentView('mode-select')
+    setCurrentView('category-ranking')
   }
 
-  const handleModeSelect = () => {
-    setCurrentView('priority-select')
-  }
-
-  const handlePrioritySelect = () => {
-    setCurrentView('item-select')
-  }
-
-  const handleItemSelect = () => {
-    if (schedulingMode === 'manual') {
-      setCurrentView('manual-schedule')
-    } else {
-      setCurrentView('auto-schedule')
-    }
+  const handleCategoryRanking = () => {
+    setCurrentView('schedule-builder')
   }
 
   const handleSave = () => {
@@ -50,10 +35,10 @@ export default function HomePage() {
       case 'park-select':
         return <ParkSelector onSelect={handleParkSelect} />
 
-      case 'mode-select':
+      case 'category-ranking':
         return (
-          <ModeSelector
-            onSelect={handleModeSelect}
+          <CategoryRanking
+            onContinue={handleCategoryRanking}
             onBack={() => {
               setCurrentView('park-select')
               setStep(1)
@@ -61,40 +46,13 @@ export default function HomePage() {
           />
         )
 
-      case 'priority-select':
+      case 'schedule-builder':
         return (
-          <PrioritySelector
-            onContinue={handlePrioritySelect}
+          <ScheduleBuilder
             onBack={() => {
-              setCurrentView('mode-select')
+              setCurrentView('category-ranking')
               setStep(2)
             }}
-          />
-        )
-
-      case 'item-select':
-        return (
-          <ItemSelector
-            onContinue={handleItemSelect}
-            onBack={() => {
-              setCurrentView('priority-select')
-              setStep(3)
-            }}
-          />
-        )
-
-      case 'manual-schedule':
-        return (
-          <TimeScheduleBoard
-            onBack={() => setCurrentView('item-select')}
-            onSave={handleSave}
-          />
-        )
-
-      case 'auto-schedule':
-        return (
-          <AutoScheduler
-            onBack={() => setCurrentView('item-select')}
             onSave={handleSave}
           />
         )
@@ -102,13 +60,7 @@ export default function HomePage() {
       case 'save':
         return (
           <SaveSchedule
-            onBack={() => {
-              if (schedulingMode === 'manual') {
-                setCurrentView('manual-schedule')
-              } else {
-                setCurrentView('auto-schedule')
-              }
-            }}
+            onBack={() => setCurrentView('schedule-builder')}
             onReset={handleReset}
           />
         )

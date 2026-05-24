@@ -27,6 +27,7 @@ export interface ScheduleSlot {
   endTime: string // e.g., '10:30'
   hasConflict?: boolean
   conflictWith?: string[]
+  isLocked?: boolean // For fixed time content (shows, parades, events)
 }
 
 export interface DaySchedule {
@@ -35,5 +36,16 @@ export interface DaySchedule {
   slots: ScheduleSlot[]
 }
 
-export type SchedulingMode = 'manual' | 'auto'
-export type PriorityMode = 'meal' | 'attraction'
+// Category priority ranking (0 = highest priority)
+export interface CategoryPriority {
+  type: ItemType
+  rank: number
+}
+
+export const DEFAULT_CATEGORY_ORDER: ItemType[] = [
+  'attraction',
+  'show',
+  'parade',
+  'event',
+  'restaurant',
+]
