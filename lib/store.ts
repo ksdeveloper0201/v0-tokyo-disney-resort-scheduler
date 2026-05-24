@@ -3,6 +3,18 @@
 import { create } from 'zustand'
 import { ParkType, ScheduleItem, ScheduleSlot, SchedulingMode, PriorityMode } from './types'
 
+// Helper functions (defined before store to use in actions)
+function parseTimeHelper(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+function formatTimeHelper(minutes: number): string {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+}
+
 interface ScheduleState {
   // Navigation state
   step: number
@@ -71,6 +83,28 @@ export const useScheduleStore = create<ScheduleState>((set) => ({
         scheduleSlots: state.scheduleSlots.filter((slot) => slot.item.id !== item.id),
       }
     }
+    
+    // For shows/parades with fixed times, auto-add to schedule with first available time
+    if (item.fixedTimes && item.fixedTimes.length > 0) {
+      const firstTime = item.fixedTimes[0]
+      const startMinutes = parseTimeHelper(firstTime)
+      const endTime = formatTimeHelper(startMinutes + item.duration)
+      
+      const newSlot: ScheduleSlot = {
+        id: `slot-${item.id}-${Date.now()}`,
+        item: { ...item, selectedTime: firstTime },
+        startTime: firstTime,
+        endTime,
+        hasConflict: false,
+        conflictWith: [],
+      }
+      
+      return {
+        selectedItems: [...state.selectedItems, item],
+        scheduleSlots: [...state.scheduleSlots, newSlot],
+      }
+    }
+    
     return {
       selectedItems: [...state.selectedItems, item],
     }
