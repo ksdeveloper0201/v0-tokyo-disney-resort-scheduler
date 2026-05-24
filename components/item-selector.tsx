@@ -51,7 +51,6 @@ export function ItemSelector({ onContinue, onBack }: ItemSelectorProps) {
   const [activeType, setActiveType] = useState<ItemType>(
     priorityMode === 'meal' ? 'restaurant' : 'attraction'
   )
-  const [expandedAreas, setExpandedAreas] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
 
   const allItems = useMemo(() => {
@@ -74,8 +73,11 @@ export function ItemSelector({ onContinue, onBack }: ItemSelectorProps) {
     return getUniqueAreas(filteredItems)
   }, [filteredItems])
 
+  // All areas expanded by default
+  const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(new Set())
+
   const toggleArea = (area: string) => {
-    setExpandedAreas((prev) => {
+    setCollapsedAreas((prev) => {
       const next = new Set(prev)
       if (next.has(area)) {
         next.delete(area)
@@ -214,7 +216,7 @@ export function ItemSelector({ onContinue, onBack }: ItemSelectorProps) {
           <div className="space-y-4">
             {areas.map((area) => {
               const areaItems = filteredItems.filter((item) => item.area === area)
-              const isExpanded = expandedAreas.has(area) || areas.length === 1
+              const isExpanded = !collapsedAreas.has(area)
 
               return (
                 <div
