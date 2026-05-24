@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useCallback, useRef } from 'react'
+import { useMemo, useState, useCallback, useRef, DragEvent } from 'react'
 import { useScheduleStore, parseTime, formatTime, calculateEndTime, checkTimeConflict, generateTimeSlots } from '@/lib/store'
 import { ScheduleSlot, ScheduleItem, ItemType } from '@/lib/types'
 import {
@@ -12,7 +12,7 @@ import {
   X,
   AlertTriangle,
   Clock,
-  Plus,
+  GripVertical,
 } from 'lucide-react'
 
 interface TimeScheduleBoardProps {
@@ -52,6 +52,8 @@ export function TimeScheduleBoard({ onBack, onSave }: TimeScheduleBoardProps) {
     newSlot: ScheduleSlot
     conflictingSlots: ScheduleSlot[]
   } | null>(null)
+  const [draggedItem, setDraggedItem] = useState<ScheduleItem | null>(null)
+  const [dropTargetTime, setDropTargetTime] = useState<string | null>(null)
 
   const boardRef = useRef<HTMLDivElement>(null)
 
@@ -92,13 +94,14 @@ export function TimeScheduleBoard({ onBack, onSave }: TimeScheduleBoardProps) {
   }
 
   const handleTimeSelect = useCallback(
-    (time: string) => {
-      if (!selectedItem) return
+    (time: string, item?: ScheduleItem) => {
+      const targetItem = item || selectedItem
+      if (!targetItem) return
 
-      const endTime = calculateEndTime(time, selectedItem.duration)
+      const endTime = calculateEndTime(time, targetItem.duration)
       const newSlot: ScheduleSlot = {
-        id: `slot-${selectedItem.id}-${time}`,
-        item: selectedItem,
+        id: `slot-${targetItem.id}-${time}`,
+        item: targetItem,
         startTime: time,
         endTime,
       }
@@ -164,6 +167,47 @@ export function TimeScheduleBoard({ onBack, onSave }: TimeScheduleBoardProps) {
     return { top, height }
   }
 
+  // Drag and Drop handlers
+  const handleDragStart = (e: DragEvent<HTMLDivElement>, item: ScheduleItem) => {
+    setDraggedItem(item)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', item.id)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedItem(null)
+    setDropTargetTime(null)
+  }
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>, time: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDropTargetTime(time)
+  }
+
+  const handleDragLeave = () => {
+    setDropTargetTime(null)
+  }
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>, time: string) => {
+    e.preventDefault()
+    setDropTargetTime(null)
+
+    if (!draggedItem) return
+
+    // For items with fixed times, show modal to select from available times
+    if (draggedItem.fixedTimes && draggedItem.fixedTimes.length > 0) {
+      setSelectedItem(draggedItem)
+      setShowTimeModal(true)
+      setDraggedItem(null)
+      return
+    }
+
+    // For regular items, add at the dropped time
+    handleTimeSelect(time, draggedItem)
+    setDraggedItem(null)
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
@@ -207,34 +251,45 @@ export function TimeScheduleBoard({ onBack, onSave }: TimeScheduleBoardProps) {
         {/* Unscheduled Items Panel */}
         <div className="lg:w-80 border-b lg:border-b-0 lg:border-r border-border bg-card">
           <div className="p-4">
-            <h2 className="font-medium text-card-foreground mb-3">
+            <h2 className="font-medium text-card-foreground mb-2">
               未配置のアイテム ({unscheduledItems.length})
             </h2>
+            <p className="text-xs text-muted-foreground mb-3">
+              ドラッグ&ドロップでタイムボードに配置
+            </p>
             <div className="space-y-2 max-h-48 lg:max-h-[calc(100vh-200px)] overflow-y-auto">
               {unscheduledItems.map((item) => (
-                <button
+                <div
                   key={item.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, item)}
+                  onDragEnd={handleDragEnd}
                   onClick={() => handleItemClick(item)}
-                  className={`w-full p-3 rounded-lg border text-left transition-colors hover:shadow-md ${
+                  className={`w-full p-3 rounded-lg border text-left transition-all cursor-grab active:cursor-grabbing hover:shadow-md ${
                     typeColors[item.type].bg
-                  } ${typeColors[item.type].border}`}
+                  } ${typeColors[item.type].border} ${
+                    draggedItem?.id === item.id ? 'opacity-50 scale-95' : ''
+                  }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
+                    <GripVertical className="w-4 h-4 text-muted-foreground" />
                     <span className={typeColors[item.type].text}>
                       {typeIcons[item.type]}
                     </span>
-                    <span className="font-medium text-card-foreground text-sm truncate">
+                    <span className="font-medium text-card-foreground text-sm truncate flex-1">
                       {item.name}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground ml-6">
                     <Clock className="w-3 h-3" />
                     <span>{item.duration}分</span>
                     {item.fixedTimes && (
-                      <span className="text-xs">({item.fixedTimes.length}公演)</span>
+                      <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                        公演時間指定
+                      </span>
                     )}
                   </div>
-                </button>
+                </div>
               ))}
               {unscheduledItems.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-4">
@@ -263,16 +318,38 @@ export function TimeScheduleBoard({ onBack, onSave }: TimeScheduleBoardProps) {
 
             {/* Grid and scheduled items */}
             <div className="ml-16 relative">
-              {/* Grid lines */}
-              {hourSlots.map((hour, index) => (
-                <div key={hour}>
-                  <div className="h-12 border-t border-border" />
-                  <div className="h-12 border-t border-border/50 border-dashed" />
-                </div>
-              ))}
+              {/* Grid lines with drop zones */}
+              {timeSlots.map((time, index) => {
+                const isHour = time.endsWith(':00')
+                const isDropTarget = dropTargetTime === time
+                
+                return (
+                  <div
+                    key={time}
+                    onDragOver={(e) => handleDragOver(e, time)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, time)}
+                    className={`h-12 border-t transition-colors ${
+                      isHour ? 'border-border' : 'border-border/50 border-dashed'
+                    } ${
+                      isDropTarget
+                        ? 'bg-primary/20 border-primary'
+                        : 'hover:bg-muted/30'
+                    }`}
+                  >
+                    {isDropTarget && draggedItem && (
+                      <div className="h-full flex items-center justify-center">
+                        <span className="text-xs text-primary font-medium">
+                          {time} に配置
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
 
               {/* Scheduled slots */}
-              <div className="absolute inset-0">
+              <div className="absolute inset-0 pointer-events-none">
                 {slotsWithConflicts.map((slot) => {
                   const { top, height } = getSlotPosition(slot.startTime, slot.endTime)
                   const colors = typeColors[slot.item.type]
@@ -288,7 +365,7 @@ export function TimeScheduleBoard({ onBack, onSave }: TimeScheduleBoardProps) {
                   return (
                     <div
                       key={slot.id}
-                      className={`absolute rounded-lg border-2 p-2 transition-all ${colors.bg} ${colors.border} ${
+                      className={`absolute rounded-lg border-2 p-2 transition-all pointer-events-auto ${colors.bg} ${colors.border} ${
                         slot.hasConflict ? 'ring-2 ring-destructive/50' : ''
                       }`}
                       style={{
