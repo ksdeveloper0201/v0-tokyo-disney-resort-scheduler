@@ -13,7 +13,7 @@ import {
     getUniqueAreas,
     getItemsByType,
 } from "@/lib/mock-data";
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
     DndContext,
     closestCenter,
@@ -319,11 +319,14 @@ function DraggableTimelineSlot({
     isExpanded: boolean;
     canDrag: boolean;
 }) {
+    const isLockedSlot = Boolean(slot.isLocked ?? isFixedTimeItem(slot.item));
+    const canDragSlot = canDrag && !isLockedSlot;
+
     const { attributes, listeners, setNodeRef, transform, isDragging } =
         useDraggable({
             id: `timeline-slot-${slot.id}`,
             data: { slot, type: "timeline-slot-drag" },
-            disabled: !canDrag,
+            disabled: !canDragSlot,
         });
 
     const style = transform
@@ -341,12 +344,12 @@ function DraggableTimelineSlot({
             style={style}
             className={`p-2 rounded-lg ${colors.bg} ${colors.border} border-l-4 transition-all ${
                 isDragging ? "opacity-70 shadow-lg" : ""
-            } ${canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
+            } ${canDragSlot ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
         >
             <div className="flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
-                        {canDrag && (
+                        {canDragSlot && (
                             <button
                                 {...attributes}
                                 {...listeners}
@@ -359,7 +362,7 @@ function DraggableTimelineSlot({
                             {typeIcons[slot.item.type]}
                         </span>
                         <span
-                            className={`font-medium text-xs truncate ${isExpanded ? "" : "max-w-[80px]"}`}
+                            className={`font-medium text-xs truncate ${isExpanded ? "" : "max-w-[140px]"}`}
                         >
                             {slot.item.name}
                         </span>
@@ -413,22 +416,23 @@ function TimelineHourSlot({
             }`}
         >
             {/* Time label */}
-            <div className="w-14 flex-shrink-0 py-2 px-2 text-xs font-medium text-muted-foreground border-r border-border bg-muted/30">
+            <div className="w-16 flex-shrink-0 py-2 px-2 text-xs font-medium text-muted-foreground border-r border-border bg-muted/30">
                 {timeStr}
             </div>
 
             {/* Slots */}
             <div className="flex-1 py-1 px-2 space-y-1">
                 {slotsInHour.map((slot) => {
-                    // Can only drag free time items (not locked/fixed time)
-                    const canDrag = !slot.isLocked;
+                    const isLockedSlot = Boolean(
+                        slot.isLocked ?? isFixedTimeItem(slot.item),
+                    );
                     return (
                         <DraggableTimelineSlot
                             key={slot.id}
                             slot={slot}
                             onRemoveSlot={onRemoveSlot}
                             isExpanded={isExpanded}
-                            canDrag={canDrag}
+                            canDrag={!isLockedSlot}
                         />
                     );
                 })}
@@ -437,6 +441,86 @@ function TimelineHourSlot({
                         ここにドロップ
                     </div>
                 )}
+            </div>
+        </div>
+    );
+}
+
+function MobileHorizontalOverview({
+    slots,
+    onRemoveSlot,
+}: {
+    slots: ScheduleSlot[];
+    onRemoveSlot: (id: string) => void;
+}) {
+    const sortedSlots = useMemo(
+        () =>
+            [...slots].sort(
+                (a, b) => parseTime(a.startTime) - parseTime(b.startTime),
+            ),
+        [slots],
+    );
+
+    const hours = useMemo(() => {
+        const h = [];
+        for (let i = 8; i < 23; i++) h.push(i);
+        return h;
+    }, []);
+
+    return (
+        <div className="h-full overflow-x-auto overflow-y-hidden bg-card">
+            <div className="min-w-max h-full flex">
+                {hours.map((hour) => {
+                    const hourSlots = sortedSlots.filter((slot) => {
+                        const slotStart = parseTime(slot.startTime);
+                        return slotStart >= hour * 60 && slotStart < (hour + 1) * 60;
+                    });
+
+                    return (
+                        <div
+                            key={hour}
+                            className="w-20 flex-shrink-0 border-r border-border px-1.5 py-1 flex flex-col"
+                        >
+                            <div className="text-[10px] font-medium text-muted-foreground text-center">
+                                {formatTime(hour * 60)}
+                            </div>
+                            <div className="flex-1 mt-1 space-y-1 overflow-y-auto">
+                                {hourSlots.map((slot) => {
+                                    const colors = typeColors[slot.item.type];
+                                    return (
+                                        <div
+                                            key={slot.id}
+                                            className={`rounded-md border ${colors.border} p-1.5 ${colors.bg}`}
+                                        >
+                                            <div className="flex items-start justify-between gap-1">
+                                                <div className="min-w-0">
+                                                    <div className={`text-[9px] font-medium truncate ${colors.text}`}>
+                                                        {slot.item.name}
+                                                    </div>
+                                                    <div className="text-[8px] text-muted-foreground mt-0.5">
+                                                        {slot.startTime} - {slot.endTime}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => onRemoveSlot(slot.id)}
+                                                    className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive flex-shrink-0"
+                                                    title="削除"
+                                                >
+                                                    <X className="w-2.5 h-2.5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {hourSlots.length === 0 && (
+                                    <div className="h-full min-h-10 rounded-md border border-dashed border-border text-[8px] text-muted-foreground flex items-center justify-center text-center px-1">
+                                        空き
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -636,6 +720,18 @@ export function ScheduleBuilder({ onBack, onSave }: ScheduleBuilderProps) {
     const [showFullTimeline, setShowFullTimeline] = useState(false);
     const [draggedItem, setDraggedItem] = useState<ScheduleItem | null>(null);
     const [draggedSlot, setDraggedSlot] = useState<ScheduleSlot | null>(null);
+    const [isMobileViewport, setIsMobileViewport] = useState(false);
+    const [mobileTimelineExpanded, setMobileTimelineExpanded] = useState(false);
+
+    useEffect(() => {
+        const updateViewport = () => {
+            setIsMobileViewport(window.innerWidth < 768);
+        };
+
+        updateViewport();
+        window.addEventListener("resize", updateViewport);
+        return () => window.removeEventListener("resize", updateViewport);
+    }, []);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -763,20 +859,40 @@ export function ScheduleBuilder({ onBack, onSave }: ScheduleBuilderProps) {
     );
 
     // Handle drag events
-    const handleDragStart = useCallback((event: DragStartEvent) => {
-        const { active } = event;
-        if (active.data.current?.type === "new-item") {
-            setDraggedItem(active.data.current.item);
-        } else if (active.data.current?.type === "timeline-slot-drag") {
-            setDraggedSlot(active.data.current.slot);
+    const handleDragStart = useCallback(
+        (event: DragStartEvent) => {
+            const { active } = event;
+            if (active.data.current?.type === "new-item") {
+                setDraggedItem(active.data.current.item);
+                if (isMobileViewport) {
+                    setMobileTimelineExpanded(true);
+                }
+            } else if (active.data.current?.type === "timeline-slot-drag") {
+                setDraggedSlot(active.data.current.slot);
+                if (isMobileViewport) {
+                    setMobileTimelineExpanded(true);
+                }
+            }
+        },
+        [isMobileViewport],
+    );
+
+    const handleDragCancel = useCallback(() => {
+        setDraggedItem(null);
+        setDraggedSlot(null);
+        if (isMobileViewport) {
+            setMobileTimelineExpanded(false);
         }
-    }, []);
+    }, [isMobileViewport]);
 
     const handleDragEnd = useCallback(
         (event: DragEndEvent) => {
             const { active, over } = event;
             setDraggedItem(null);
             setDraggedSlot(null);
+            if (isMobileViewport) {
+                setMobileTimelineExpanded(false);
+            }
 
             if (!over) return;
 
@@ -801,6 +917,14 @@ export function ScheduleBuilder({ onBack, onSave }: ScheduleBuilderProps) {
                 over.data.current?.type === "timeline-hour-slot"
             ) {
                 const slot = active.data.current.slot as ScheduleSlot;
+                const isLockedSlot = Boolean(
+                    slot.isLocked ?? isFixedTimeItem(slot.item),
+                );
+
+                if (isLockedSlot) {
+                    return;
+                }
+
                 const newHour = over.data.current.hour as number;
 
                 // Calculate new time based on the hour
@@ -884,6 +1008,7 @@ export function ScheduleBuilder({ onBack, onSave }: ScheduleBuilderProps) {
             collisionDetection={closestCenter}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
         >
             <div className="min-h-screen flex flex-col bg-background">
                 {/* Header */}
@@ -1052,21 +1177,56 @@ export function ScheduleBuilder({ onBack, onSave }: ScheduleBuilderProps) {
                     </div>
                 </div>
 
-                {/* Mobile: Bottom timeline toggle */}
-                <div className="md:hidden fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur border-t border-border p-4">
-                    <div className="flex items-center justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm text-muted-foreground">
-                                {scheduleSlots.length}件のスケジュール
+                {/* Mobile: Compact schedule panel (1/4 height by default, full screen while dragging) */}
+                <div
+                    className={`md:hidden fixed left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur transition-all duration-300 ease-in-out ${
+                        mobileTimelineExpanded
+                            ? "inset-0"
+                            : "bottom-0 h-[35vh] max-h-[35vh]"
+                    }`}
+                >
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+                        <div>
+                            <p className="text-xs font-medium text-muted-foreground">
+                                スケジュール
+                            </p>
+                            <p className="text-sm text-foreground">
+                                {scheduleSlots.length}件
                             </p>
                         </div>
-                        <button
-                            onClick={() => setShowFullTimeline(true)}
-                            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:bg-primary/90 transition-colors flex items-center gap-2"
-                        >
-                            <Calendar className="w-4 h-4" />
-                            タイムライン
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setShowFullTimeline(true)}
+                                className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg font-medium text-xs hover:bg-primary/90 transition-colors flex items-center gap-1"
+                            >
+                                <Calendar className="w-3.5 h-3.5" />
+                                全画面
+                            </button>
+                            {mobileTimelineExpanded && (
+                                <button
+                                    onClick={() =>
+                                        setMobileTimelineExpanded(false)
+                                    }
+                                    className="px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:bg-muted"
+                                >
+                                    閉じる
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="h-[calc(100%-3.25rem)] overflow-hidden">
+                        {!mobileTimelineExpanded ? (
+                            <MobileHorizontalOverview
+                                slots={scheduleSlots}
+                                onRemoveSlot={removeScheduleSlot}
+                            />
+                        ) : (
+                            <MiniTimeline
+                                slots={scheduleSlots}
+                                onExpand={() => setMobileTimelineExpanded(true)}
+                                onRemoveSlot={removeScheduleSlot}
+                            />
+                        )}
                     </div>
                 </div>
 
